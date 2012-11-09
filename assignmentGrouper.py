@@ -4,6 +4,7 @@ import os
 import sys
 from collections import defaultdict
 import shutil
+import zipfile
 
 labNumbers = ["FS1",
               "FS2",
@@ -24,20 +25,20 @@ labNumbers = ["FS1",
 
 def extractFromFileName(fileName, skippedList):
 
-    list = fileName.rsplit("_")
+    parts = fileName.rsplit("_")
 
-    lastTerms = list[len(list)-1].rsplit(".")
-    del list[(len(list)-1)]
+    lastTerms = parts[len(parts)-1].rsplit(".")
+    del parts[(len(parts)-1)]
     for term in lastTerms:
-        list.append(term)
-    studentId= list[1]
-    attemptTime= list[3]
-    if len(list)>4:
-        group = list[4].upper()
+        parts.append(term)
+    studentId= parts[1]
+    attemptTime= parts[3]
+    if len(parts)>4:
+        group = parts[4].upper()
         if group not in labNumbers:
             found = False
             for labNum in labNumbers:
-                if labNum in list[4:]:
+                if labNum in parts[4:]:
                     group = labNum
                     found = True
                     break
@@ -47,18 +48,18 @@ def extractFromFileName(fileName, skippedList):
 
 
 
-        name = " ".join(list[5:len(list)-1])
+        name = " ".join(parts[5:len(parts)-1])
 
     else:
         group = name = None
     return studentId, attemptTime, group, name
 
 def extractFromFileNameWithoutSkipping(fileName, studentToGroupMapping):
-    list = fileName.rsplit("_")
-    studentId= list[1]
-    attemptTime= list[3]
-    if len(list)>4:
-        group = list[4].upper()
+    parts = fileName.rsplit("_")
+    studentId= parts[1]
+    attemptTime= parts[3]
+    if len(parts)>4:
+        group = parts[4].upper()
         if group not in labNumbers:
             if studentId in studentToGroupMapping:
                 group = studentToGroupMapping[studentId]
@@ -68,7 +69,7 @@ def extractFromFileNameWithoutSkipping(fileName, studentToGroupMapping):
 
 
 
-        name = " ".join(list[5:])
+        name = " ".join(parts[5:])
         name = name.rsplit(".")[0]
     else:
         group = name = None
@@ -88,8 +89,14 @@ def cleanUpFileName(file):
         return parts[1]+neededParts
     return parts[1]+"_"+neededParts
 
-
-
+def unzipZippedFile(fileName, filepath):
+    if zipfile.is_zipfile(fileName):
+        with zipfile.ZipFile(fileName,'r') as myZip:
+            myZip.extractall(filepath)
+            print("extracted ", fileName," to ", filepath)
+            return True
+    else:
+        return False
 
 def main():
     skippedList = []
@@ -112,57 +119,60 @@ def main():
 
     listOfFiles = os.listdir(inputFilePath)
 
-    for file in listOfFiles:
-        id,attemptTime, group,name = extractFromFileName(file, skippedList)
-        if id is None:
+    for tempFile in listOfFiles:
+        studentId,attemptTime, group,name = extractFromFileName(tempFile, skippedList)
+        print(studentId)
+        if studentId is None:
             continue
-        if name is not None and id not in idToNameMapping:
-            idToNameMapping[id]=name
-            idToLastAttemptTime[id]= attemptTime
+        if name is not None and studentId not in idToNameMapping:
+            idToNameMapping[studentId]=name
+            idToLastAttemptTime[studentId]= attemptTime
         if group is not None:
-            idToGroupMapping[id] = group;
+            idToGroupMapping[studentId] = group;
             if group in groupToIdMapping:
-                groupToIdMapping[group].append(id)
+                groupToIdMapping[group].append(studentId)
             else:
-                groupToIdMapping[group]=[id,]
-        if id in idToFileMapping:
-            idToFileMapping[id].append(file)
+                groupToIdMapping[group]=[studentId,]
+        if studentId in idToFileMapping:
+            idToFileMapping[studentId].append(tempFile)
         else:
-            idToFileMapping[id]=[file,]
+            idToFileMapping[studentId]=[tempFile,]
 
-    for file in skippedList:
-        id,attemptTime, group,name = extractFromFileNameWithoutSkipping(file, idToGroupMapping)
+    for tempFile in skippedList:
+        studentId,attemptTime, group,name = extractFromFileNameWithoutSkipping(tempFile, idToGroupMapping)
 
-        if name is not None and id not in idToNameMapping:
-            idToNameMapping[id]=name
-            idToLastAttemptTime[id]= attemptTime
+        if name is not None and studentId not in idToNameMapping:
+            idToNameMapping[studentId]=name
+            idToLastAttemptTime[studentId]= attemptTime
         if group is not None:
             if group in groupToIdMapping:
-                groupToIdMapping[group].append(id)
+                groupToIdMapping[group].append(studentId)
             else:
-                groupToIdMapping[group]=[id,]
-        if id in idToFileMapping:
-            idToFileMapping[id].append(file)
+                groupToIdMapping[group]=[studentId,]
+        if studentId in idToFileMapping:
+            idToFileMapping[studentId].append(tempFile)
         else:
-            idToFileMapping[id]=[file,]
+            idToFileMapping[studentId]=[tempFile,]
 
 
     for group in groupToIdMapping:
         groupPath = outputFilePath+os.path.sep+group
         ensure_dir(groupPath)
 #        print("*********** ",group,"*************")
-        for id in groupToIdMapping[group]:
-            idPath = groupPath+os.path.sep+id
+        for studentId in groupToIdMapping[group]:
+            idPath = groupPath+os.path.sep+studentId
 #            print(id)
 
             ensure_dir(idPath)
-            for file in idToFileMapping[id]:
-                print("Copying ",file)
-                outputFile = cleanUpFileName(file)
-
-                inputFileName= inputFilePath+os.path.sep+file
+            for tempFile in idToFileMapping[studentId]:
+                print("Copying ",tempFile)
+                outputFile = cleanUpFileName(tempFile)
+                print("Writing as ", outputFile)
+                inputFileName= inputFilePath+os.path.sep+tempFile
                 outputFileName = idPath +os.path.sep+outputFile
-                shutil.copy(inputFileName,outputFileName)
+                if not unzipZippedFile(inputFileName, idPath):
+                    shutil.copy(inputFileName,outputFileName)
+
 
 
 
